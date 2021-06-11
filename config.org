@@ -1,0 +1,575 @@
+#+OPTIONS: ^:nil
+* Getting stuff up and running
+** Getting package stuff set up
+First and foremost, we have got to get some package archives set up so that we can slurp up all the amazing Emacs pacakges on the interwebs.
+
+#+BEGIN_SRC emacs-lisp
+  (require 'package)
+  (setq package-enable-at-startup nil)
+  (setq package-archives '(("org"       . "http://orgmode.org/elpa/")
+			   ("gnu"       . "http://elpa.gnu.org/packages/")
+			   ("MELPA Stable"     . "https://stable.melpa.org/packages/")))
+#+END_SRC
+
+I have never used ~use-package~ without ~:ensure t~, so we'll just have it enabled by default.
+
+#+BEGIN_SRC emacs-lisp
+(setq use-package-always-ensure t)
+#+END_SRC
+
+Straight.el works well for downloading packages directly from GitHub. The following is the code that the documentation says to put in your config. I have no idea what it does, but it works, and isn't that what really counts?
+
+#+BEGIN_SRC emacs-lisp
+(defvar bootstrap-version)
+(let ((bootstrap-file
+       (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
+      (bootstrap-version 5))
+  (unless (file-exists-p bootstrap-file)
+    (with-current-buffer
+        (url-retrieve-synchronously
+         "https://raw.githubusercontent.com/raxod502/straight.el/develop/install.el"
+         'silent 'inhibit-cookies)
+      (goto-char (point-max))
+      (eval-print-last-sexp)))
+  (load bootstrap-file nil 'nomessage))
+#+END_SRC
+
+You can integrate straight.el with use-package. By adding ~:straight t~ in use-package, you can download the package directly.
+
+#+BEGIN_SRC emacs-lisp
+(straight-use-package 'use-package)
+#+END_SRC
+
+I am just going to use straight for everything because it works for almost everything.
+
+#+BEGIN_SRC emacs-lisp
+(setq straight-use-package-by-default t)
+#+END_SRC
+
+** Getting a good screen size
+I have a big monitor, so I like to have a Chrome window open on the left side of the screen and Emacs open on the right side. To facilitate this, I automatically set the screen size and position on startup.
+
+#+BEGIN_SRC emacs-lisp
+(when window-system
+  (set-frame-position (selected-frame) -1 -1)
+  (set-frame-size (selected-frame) 140 120))
+#+END_SRC
+
+** Freeing up screen real estate
+Conserve every last pixel. Get rid of the toolbar, scroll bar, menu bar. If it has the word "bar" in it, destroy it.
+
+#+BEGIN_SRC emacs-lisp
+(menu-bar-mode -1)
+(tool-bar-mode -1) 
+(blink-cursor-mode -1)
+(scroll-bar-mode -1)
+(global-hl-line-mode 1) 
+(global-visual-line-mode 1)
+#+END_SRC
+
+** Some sensible defaults
+These are some good ones.
+
+#+BEGIN_SRC emacs-lisp
+(setq coding-system-for-read 'utf-8
+      coding-system-for-write 'utf-8
+      default-file-name-coding-system 'utf-8
+      ring-bell-function 'ignore ;; disable the sound of hell
+      inhibit-startup-screen +1
+      make-backup-files -1
+      sentence-end-double-space nil
+      default-fill-column 80)		
+
+(set-language-environment 'utf-8)      
+(prefer-coding-system 'utf-8)   
+(set-default-coding-systems 'utf-8)                                                         
+(set-terminal-coding-system 'utf-8)                                                         
+(set-keyboard-coding-system 'utf-8)    
+
+;; Treat clipboard input as UTF-8 string first; compound text next, etc.                    
+(setq x-select-request-type '(UTF8_STRING COMPOUND_TEXT TEXT STRING)) 
+#+END_SRC
+
+** Who am I?
+And what is the meaning of my existence? Just kidding, Emacs is not for existentialism. We'll stick with the superficial for now.
+
+#+BEGIN_SRC emacs-lisp
+(setq user-full-name "Jeremy Clark"
+      user-mail-address "jeremyclark456@gmail.com")
+#+END_SRC
+
+** Look like a cool hacker
+I am bad at coding but good at looking like I'm good at coding. A badass theme always helps.
+#+BEGIN_SRC emacs-lisp
+  (use-package solarized-theme :straight t)
+  (add-hook 'after-init-hook (lambda () (load-theme 'solarized-light :NO-CONFIRM t)))
+#+END_SRC
+
+* Keybinding shenanigans
+** General and which-key
+There must be a better way to do this, but I've written something and it works. I tried to figure out how to use macros to write this more efficiently, but I have not found a way. So for now, we will just stick with what works. First, we'll get ~general~ and ~which-key~, are two great keybinding packages. ~general~ integrates ~evil~ keybindings and ~which-key~ displays short descriptions for the keybindings, which can be really helpful if you forgot which keybinding does what.
+
+#+BEGIN_SRC emacs-lisp
+(use-package general
+  :config (general-evil-setup))
+(use-package which-key
+  :init (which-key-mode)
+  :config
+  (setq which-key-popup-type 'minibuffer))
+#+END_SRC
+
+** Setting leader keys
+I switched over from Doom and Spacemacs to writing my own Emacs configuration from scratch because those had too much lag time. As a general rule of thumb, if your cursor is lagging, it's time to change something. However, I did not want to sacrifice the mneumonic keybindings of Doom and Spacemacs. So, I wrote my own program. First we need to choose our "leader" keys. For global keybindings, I'll choose ~SPC~ and for major-mode keybindings, I'll choose ~,~.
+
+#+BEGIN_SRC emacs-lisp
+(defconst jc/global-leader "SPC")
+(defconst jc/global-non-normal-leader "C-SPC")
+(defconst jc/major-mode-leader ",")
+(defconst jc/major-mode-non-normal-leader "C-c")
+#+END_SRC
+
+** Convert mode names to map names
+This is going to be useful in a minute. When we define keybindings under major modes or minor modes, we have to tell ~general~ which keymaps we are binding under. As an example, if we wanted to bind under ~foo-mode~, we would enter ~foo-mode-map~ as the argument for ~:keymaps~ in ~general-define-key~. Every mode follows this syntax. So, instead of entering the actual map names, it would be easier to just enter the mode names and then convert them to map names. This is exactly what ~jc/mode-names->map-names~ does.
+
+#+BEGIN_SRC emacs-lisp
+(defun jc/mode-names->map-names (mode-names)
+	 (if mode-names
+	     (mapcar (lambda (mode) (intern (concat (symbol-name mode) "-map"))) mode-names)
+	    'global-map))
+#+END_SRC
+
+** Make a general definer
+Ok, here's where things start to get a little messy. I wrote the function ~jc/general-key-definer~ a general method for creating other, more specific key definers like ~jc/global-definer~, ~jc/minor-mode-definer~ and ~jc/major-mode-definer~. I think you can do this with a macro, but I haven't gotten that far just yet.
+
+#+BEGIN_SRC emacs-lisp
+(defun jc/general-key-definer (modes leader non-normal-leader &rest bindings)
+  (let ((key (pop bindings))
+	(cmd (pop bindings)))
+    (while key
+      (general-define-key :states '(normal visual insert)
+			  :keymaps (jc/mode-names->map-names modes)
+			  :prefix leader
+			  :non-normal-prefix non-normal-leader
+			  key cmd)
+      (setq key (pop bindings)
+	    cmd (pop bindings)))))
+#+END_SRC
+
+** Use general-key-definer
+   Now, we use ~jc/general-key-definer~ to make some definers. As an example, if ~jc/global-definer~ is given some keybindings, it will automatically bind those to the global keymap with the appropriate leaders. When ~jc/major-mode-definer~ is given a list of modes and some binings, it will define those keybingings under the respective keymaps of the major modes with the appropriate leader keys, which in this case happen to be ~,~ in normal mode and ~C-c~ in insert mode.
+
+#+BEGIN_SRC emacs-lisp
+(defun jc/global-definer (&rest bindings)
+  (apply 'jc/general-key-definer (append (list nil
+					    jc/global-leader
+					    jc/global-non-normal-leader)
+				      bindings)))
+
+(defun jc/minor-mode-definer (modes &rest bindings)
+  (apply 'jc/general-key-definer (append (list modes
+					    jc/global-leader
+					    jc/global-non-normal-leader)
+				      bindings)))
+
+(defun jc/major-mode-definer (modes &rest bindings)
+  (apply 'jc/general-key-definer (append (list modes
+					    jc/major-mode-leader
+					    jc/major-mode-non-normal-leader)
+				      bindings)))
+#+END_SRC
+
+** Make general group definer
+Here's where the fun begins. This is the whole reason why I'm writing this complicated program in the first place. This might be overkill, and I'm not even sure if Spacemacs and Doom have a feature like this. Essentially, what I want to do is to be able to define keys under a certain /group/. Here's what I mean by that. In Spacemacs, if you type ~SPC f~ in normal mode, a menu pops up with a whole bunch of options. You can press ~f~ again to find a file, ~s~ to save it, ~R~ to rename it, ect. I want to streamline this process.
+
+#+BEGIN_SRC emacs-lisp :tangle no
+  (jc/general-group-definer nil jc/global-leader jc/global-non-normal-leader "f" "Files"
+   (list "f" 'find-file "Find file")
+   (list "s" 'save-file "Save file")
+   (list "R" 'rename-file "Rename file")) 
+#+END_SRC
+
+So the code above would do exactly that. By pressing ~SPC~, you would see the ~which-key~ prompt for "Files" under ~f~. Then, if you pressed ~f~, you would be taken to a group of keys that also have ~which-key~ aliases. Pretty cool! How the function is implemented is irrelavent, so long as you understand how input the arguments correctly.
+
+#+BEGIN_SRC emacs-lisp
+(defun jc/general-group-definer (modes leader non-normal-leader group-key group-name &rest bindings)
+   (defun jc/define-key-under-group (key cmd alias)
+      (jc/general-key-definer modes
+			   leader
+			   non-normal-leader
+			   (format "%s%s" group-key key)
+			   (list cmd :which-key alias)))
+	  (jc/general-key-definer modes leader non-normal-leader group-key (list :ignore t :which-key group-name))
+	  (let ((current-binding (pop bindings)))
+	    (while current-binding
+	      (let ((key (pop current-binding))
+		    (cmd (pop current-binding))
+		    (alias (if current-binding (pop current-binding) (symbol-name cmd))))
+		(jc/define-key-under-group key cmd alias)
+		(setq current-binding (pop bindings))))))
+#+END_SRC
+
+** Use general-group-definer
+Now, we can use this general implementation to define more specific cases. With the following functions, my example above could be rewritten as
+
+#+BEGIN_SRC emacs-lisp :tangle no
+  (jc/make-global-key-group "f" "Files"
+     (list "f" 'find-file "Find file")
+     (list "s" 'save-file "Save file")
+     (list "R" 'rename-file "Rename file"))
+#+END_SRC
+
+I will be using these a lot.
+
+#+BEGIN_SRC emacs-lisp
+(defun jc/make-major-mode-key-group (group-key group-name modes &rest bindings)
+  (apply 'jc/general-group-definer (append (list modes
+					      jc/major-mode-leader
+					      jc/major-mode-non-normal-leader
+					      group-key
+					      group-name)
+					bindings)))
+
+(defun jc/make-minor-mode-key-group (group-key group-name modes &rest bindings)
+  (apply 'jc/general-group-definer (append (list modes
+					      jc/global-leader
+					      jc/global-non-normal-leader
+					      group-key
+					      group-name)
+					bindings)))
+
+(defun jc/make-global-key-group (group-key group-name &rest bindings)
+  (apply 'jc/general-group-definer (append (list nil
+					      jc/global-leader
+					      jc/global-non-normal-leader
+					      group-key
+					      group-name)
+					bindings)))
+#+END_SRC
+
+** Global keybindings
+Now, the fruits of our labor pay off. Let's do some keybinding! First, we've got the Files group, which has some pretty self-explanatory functions. I added the binding ~SPC f i~ to automatically open the init file. I defined my own init-file variable because ~user-init-file~ goes to ~/.emacs.d/init.el, which then uses Chemacs to go over to this version.
+*** Files
+At this point I have gotten so used to closing and restarting emacs every time I make a change. As I am just getting things set up, this happens to be a lot. If I've learned anything so far from Emacs, it is that there is always room for more efficiency. Let's write a function to do it instead. We can bind this under the /SPC f/ group.
+#+begin_src emacs-lisp
+  (defun jc/reload-config ()
+    (interactive)
+    (org-babel-load-file jc/literate-config-file-location))
+#+end_src
+
+#+BEGIN_SRC emacs-lisp
+  (defconst jc/init-file-location "~/.emacs.default/init.el")
+  (defconst jc/literate-config-file-location "~/.emacs.default/config.org")
+  (defun jc/open-init-file ()
+    (interactive)
+    (switch-to-buffer (find-file-noselect jc/init-file-location)))
+  (defun jc/open-literate-config-file ()
+    (interactive)
+    (switch-to-buffer (find-file-noselect jc/literate-config-file-location)))
+  (jc/make-global-key-group "f" "Files"
+			    (list "f" 'find-file "Find file")
+			    (list "c" 'copy-file "Copy file")
+			    (list "D" 'delete-file "Delete file")
+			    (list "R" 'rename-file "Rename file")
+			    (list "s" 'save-buffer "Save buffer")
+			    (list "i" 'jc/open-init-file "Open init file")
+			    (list "l" 'jc/open-literate-config-file "Open literate config")
+			    (list "r" 'jc/reload-config "Reload config file"))
+#+END_SRC
+
+*** M-x
+If we press ~SPC SPC~, we get the functionality of ~M-x~.
+
+#+BEGIN_SRC emacs-lisp
+(jc/global-definer "SPC" (list 'execute-extended-command :which-key "Execute command"))
+#+END_SRC
+
+*** Windows
+On to windows. I installed ~window-numbering~ and made a few adjustments to fit my needs.
+
+#+BEGIN_SRC emacs-lisp
+  (use-package window-numbering
+    :straight t
+    :init (window-numbering-mode +1)
+    :config (setq windmove-wrap-around t)) ;; Makes windows continuous like Pac Man
+
+  
+  (defun jc/switch-to-window-with-number (arg)
+    (interactive "sWindow to switch to: ")
+    (select-window-by-number (string-to-number arg)))
+  (jc/make-global-key-group "w" "Window"
+			 (list "h" 'windmove-left "Move left")
+			 (list "j" 'windmove-down "Move down")
+			 (list "k" 'windmove-up "Move up")
+			 (list "l" 'windmove-right "Move right")
+			 (list "d" 'delete-window "Delete window")
+			 (list "s" 'split-window-vertically "Split vertical")
+			 (list "v" 'split-window-horizontally "Split horizontal")
+			 (list "n" 'jc/switch-to-window-with-number "Select window by number")
+			 (list "b" 'previous-buffer "Previous buffer"))
+#+END_SRC
+
+*** Buffers
+When I first got Emacs, it took me a minute to understand the difference between buffers, frames, windows, files, workspaces, etc. Now, I understand. I don't know why I am writing this introduction, as it is pretty much irrelavent. I guess it just felt awkward and impersonal not to write something.
+
+#+begin_src emacs-lisp
+(jc/make-global-key-group "b" "Buffer"
+			  (list "b" 'switch-to-buffer "Go to buffer")
+			  (list "x" 'kill-this-buffer "Kill buffer")
+			  (list "r" 'rename-buffer "Rename buffer")
+			  (list "p" 'previous-buffer "Previous buffer")
+			  (list "n" 'next-buffer "Next buffer"))
+#+end_src
+
+* Templates
+** YASnippet
+*** Introduction/example
+This library allows you to insert interactive templates using emacs lisp. So, you can use environment-specific variables to make each template appropriate for its lexical use. As an example, you can write, (note that this code block will not be tangled)
+
+#+begin_src snippet :tangle no
+# -*- mode: snippet -*-
+# name: fraction-snippet
+# key: frac
+# --
+\frac{${1:numerator}}{${2:denominator}}$0
+#+end_src
+
+So, if you have YASnippet mode enabled, when you write ~frac~ and press ~TAB~, a template will exapnd that looks like this:
+
+\frac{numerator}{denominator} 
+
+Your cursor will start at the word ~numerator~ because this is where ~1~ is. Once you start typing, whatever you type will replace ~numerator~. When you are finished filling out this field, you can press ~TAB~ again, which will bring you to denominator, where you can do the same thing. ~$0~ represents where the cursor will go once all of the fields have been filled out.
+
+But it gets better because you can incorporate acutal Emacs Lisp into your YASnippets. Consider the following example, which, again, will not be tangled. Also, this specific example uses the ~rx~ library. If you try to import ~rx~ directly within the snippet, you run into problems because ~(require 'rx)~ expands to ~nil~, which we don't want. YASnippet has a solution for this, however. You can include a file called ~.yas-setup.el~ in the same directory as whatever your template is in to include library imports, variable definitions, function definitions, and pretty much anything else that is imperative and that you don't want expanded in your snippets. So, for the purpose of this example, you would have a ~.yas-setup.el~ file with the following contents:
+
+#+begin_src emacs-lisp :tangle no
+(require 'rx)
+#+end_src
+
+Now, we can move on to writing an actual snippet, which, again will not be tangled. Also note that ~[ZWS]~ is a unicode escape character, since this is written in org mode. In an actual file, you would just write the asterikses, but if you leave them unescaped here in the org file, it messes with the document structure. I wish the creators of org mode would automatically escape asterikses within source blocks, but I guess they have not gotten around to doing that. Or maybe there is some reason for not including this feature that I have not thought of. Either way, just know that ~[ZWS]~ would not normally be there.
+
+#+begin_src snippet :tangle no
+# -*- mode: snippet -*-
+# name: document-header
+# key: head
+# --
+\#+TITLE: Advent of Code Day `(string-match (rx (group (= 1 digit))) (file-name-nondirectory buffer-file-truename))`
+\#+PROPERTY: header-args :tangle yes
+[ZWS]* Setup
+\#+begin_src python
+
+\#end_src
+
+[ZWS]* Part 1
+[ZWS]*[ZWS]* Problem Statment
+
+[ZWS]*[ZWS]* Solution
+
+[ZWS]* Part 2
+[ZWS]*[ZWS]* Problem Statment
+
+[ZWS]*[ZWS]* Solution
+   
+[ZWS]* Running
+\#+begin_src python
+if __name__ == '__main__':
+    print(f"Answer to Part 1: {part_1(data)}")
+    print(f"Answer to Part 2: {part_2(data)}")
+\#+end_src
+#+end_src
+
+We could (and probably will) take this a whole lot further by setting up a python/emacs program that scrapes the problem statements directly from Advent of Code website, but hopefully you can see how this works.
+
+*** Setup
+Now, let's actually get it set up. This is straight up plagiarized from [[http://www.howardism.org/Technical/Emacs/templates-tutorial.html][Howard Abrams.]]
+
+#+begin_src emacs-lisp
+(use-package yasnippet
+       :ensure t
+       :init
+       (yas-global-mode 1)
+       :config
+       (add-to-list 'yas-snippet-dirs (locate-user-emacs-file "snippets")))
+#+end_src
+
+Continuing on with Howard's article, we can use autoinsert to create file templates, which are helpful if you create a bunch of files that have a very similar structure, like the Advent of Code example. Again, pretty much plagiarized. The first thing we are going to do is define a function called ~jc/autoinsert-yas-expand~, which essentially takes ~(buffer-string)~, deletes all the text in the file, and then pastes it in, using YAS expansions. So, you can write an entire template file with the emacs lisp surrounded by backticks in the places where you need contextual information. We will get to this later though. For now, remember that ~jc/autoinsert-yas-expand~ clears out all of the text in a file and replaces it with an expanded YAS template. It will only work, however, in collaboration with ~define-auto-insert~, which we will get around to in a second.
+
+#+begin_src emacs-lisp
+(defun jc/autoinsert-yas-expand()
+  "Replace text in yasnippet template."
+  (yas-expand-snippet (buffer-string) (point-min) (point-max)))
+#+end_src
+
+Alright, now that we have this function defined, we will use the autoinsert package. Essentially, autoinsert is great for whenever you have a bunch of files that are all have a similar basic outline. For example, if your company requires you to have a copyright notice on the top of every file in a project, you could write a template file and then write a regex to match all the target files so that, upon creation, they have the boilerplate stuff automatically. You can set up autoinserts with ~define-auto-insert~, which takes a regex to match the file path and a template file. So as an example, (not tangled)
+
+#+begin_src emacs-lisp :tangle no
+(define-auto-insert (rx ".el" eol) "my-copyright-template.el")
+#+end_src
+
+Would insert ~my-copyright-template.el~ any time a new file is created that ends in ~.el~. 
+
+#+begin_src emacs-lisp
+(use-package autoinsert
+  :init
+  ;; Don't want to be prompted before insertion:
+  (setq auto-insert-query nil)
+  
+  ;; Store all template files in a directory called templates.
+  (setq auto-insert-directory (locate-user-emacs-file "templates"))
+  (add-hook 'find-file-hook 'auto-insert)
+  (auto-insert-mode 1)
+  :config
+  (define-auto-insert (rx "/advent-of-code/day" (one-or-more digit) ".org" eol)
+    ["default-aoc.org" jc/autoinsert-yas-expand]))
+#+end_src
+
+Now, I've got to explain this last part with ~define-auto-insert~ because I don't want to forget how it works. We saw a simplified example of ~define-auto-insert~ earlier, but this use case is more complicated because it incorporates the ~jc/autoinsert-yas-expand~ function described earlier. The second argument is a vector with the first element being "default-aoc.org" and the second being ~jc/autoinsert-yas-expand~. This use case allows us to combine the functionality of YAS and autoinsert. Essentially, "default-aoc.org" is just a regular template, except with context-specific emacs lisp code embedded within it, which allows every file to be unique. For example, if your file header needs to correspond with the file name, you could write a piece of emacs lisp code that takes the file name and parses it accordingly. Another use case could be dates.
+
+* Evil mode
+Evil mode is fantastic. It combines the best parts of Vim with the best parts of Emacs to make a text editor that is truly amazing. I highly recommmend Evil mode.
+
+#+BEGIN_SRC emacs-lisp
+(use-package evil
+  :init (evil-mode 1)
+  :config
+  (setq evil-search-module 'evil-search)
+  (setq evil-ex-complete-emacs-commands nil)
+  (setq evil-emacs-state-modes nil)
+  (setq evil-emacs-insert-state-modes nil)
+  (setq evil-motion-state-modes nil))
+#+END_SRC
+
+Evil smartparens can be integrated into evil mode. Smartparens does autocompletion for parentheses.
+
+#+begin_src emacs-lisp
+(use-package evil-smartparens
+  :config (add-hook 'smartparens-enabled-hook #'evil-smartparens-mode)
+  (add-hook #'python-mode-hook #'smartparens-mode))
+#+end_src
+
+* Searching capabilities
+These three packages make searching for files much more efficient.
+
+#+BEGIN_SRC emacs-lisp
+(use-package orderless
+  :straight t
+  :config
+  (setq completion-styles '(orderless))
+  (setq orderless-skip-highlighting (lambda () selectrum-is-active)))
+
+(use-package selectrum
+  :straight t
+  :init (selectrum-mode)
+  :config
+  (setq selectrum-prescient-enable-filtering nil)
+  (savehist-mode)
+  (setq selectrum-highlight-candidates-function #'orderless-highlight-matches))
+
+(use-package selectrum-prescient
+  :straight t
+  :after selectrum
+  :config (selectrum-prescient-mode))
+#+END_SRC
+
+* Modeline
+Maybe someday I will make my own modeline, but for now I just use the doom modeline.
+
+#+BEGIN_SRC emacs-lisp
+(use-package all-the-icons)
+(use-package doom-modeline
+  :init (doom-modeline-mode 1))
+#+END_SRC
+
+* Speed-of-thought lisp
+Lisp is great, but it's also notoriously difficult to edit with all of those parentheses. When writing lisp, you end up spending more time messing around with parentheses than writing useful code. My goal is to mitigate this with some packages that enable you to write Lisp at the speed of thought. Might be easier said than done though because I am still getting used to this split keyboard.
+
+#+BEGIN_SRC emacs-lisp
+(use-package lispy
+  :straight t
+  :defer t
+  :hook ((lisp-mode . lispy-mode)
+	 (emacs-lisp-mode . lispy-mode)))
+
+(use-package lispyville
+  :straight t
+  :defer t
+  :hook (lispy-mode . lispyville-mode)
+  :config
+  (lispyville-set-key-theme '((operators normal) ;; These are the functionalities that I have enabled for Lispyville.
+			      (atom-motions normal)
+			      (additional-movement normal)
+			      (commentary normal)
+			      (slurp/barf-cp normal)
+			      (additional normal visual)
+			      (additional-insert normal visual))))
+#+END_SRC
+
+* Flycheck
+It's nice to have a linter. This one is definitely a work in progress, but it is better than nothing.
+
+#+BEGIN_SRC emacs-lisp
+(use-package flycheck
+  :straight t
+  :init (global-flycheck-mode)
+  :custom
+  (flycheck-display-errors-delay 2))
+#+END_SRC
+
+* Org mode
+  Ah yes, Org mode. Possibly the best feature in Emacs. In fact, I am writing this configuration in org mode and then tangling the code blocks to a .el file. It is pretty fantastic. Org mode can be an IDE, a journal, a blog, a to-do list, an academic paper, notes and much, much more.
+
+** Pretty code blocks
+I want syntax highlighting on my org mode code blocks.
+#+begin_src emacs-lisp
+  (add-hook 'org-mode-hook (lambda ()
+			     (setq org-src-fontify-natively t
+				   org-src-tab-acts-natively t
+				   org-edit-src-content-indentation 0)))
+#+end_src
+
+** Org-edit-special
+  First, let's change something that has been really bothering me. I love using ~org-edit-special~ to edit babel code blocks, but every time I use it, it replaces another window with the special editing buffer. When I exit, it deletes that window. So I have to constantly reopen windows that ~org-edit-special~ kills, which is really annoying. The following code makes it so that ~org-edit-special~ replaces the current buffer with the special buffer. When you close the special buffer, the previous buffer comes back. This is much more convenient. Someday, I would like to be able to simply edit source blocks natively without having to edit in a special mode, but nobody on the internet has seemed to figure out how to do this. Maybe I will do an open source contribution to Org mode to add this feature.
+
+#+BEGIN_SRC emacs-lisp
+(setq org-src-window-setup 'current-window)
+#+END_SRC
+
+** Source block insertion
+   It is kind of a hassle to have to manually type in the surroundings for a code block every time. Let's use a shortcut. According to Stack Exchange, you also need org-tempo for this to work. Don't ask me why. I don't even know what it does. I just know that we need it for some reason. I have tried to figure out how to use <sTAB to complete this, but for some reason this does not work. I will just have to stick with C-c C-, s for now because I cannot figure out why TAB is not working for autocompletion.
+
+#+BEGIN_SRC emacs-lisp
+  (require 'org-tempo)
+  (setq org-structure-template-alist '(("s" . "src")))
+#+END_SRC
+** SICP
+It is nice to have a few packages for doing SICP exercises. This is a cool mode for editing scheme languages.
+
+#+begin_src emacs-lisp
+  (use-package geiser-mit
+    :config (setq geiser-racket-binary "/usr/bin/racket"
+		  geiser-active-implementations '(racket)
+		  geiser-default-implementations '(racket)))
+#+end_src
+
+We can make these languages compatible with org babel with the following. This way, we can do exercises in an org file and explain the answers in depth without having to worry about comment junk.
+
+#+begin_src emacs-lisp
+(org-babel-do-load-languages 'org-babel-load-languages '((scheme . t)
+							 (python . t)))
+#+end_src
+
+I have been using Racket to do SICP exercises.
+
+#+begin_src emacs-lisp
+(use-package racket-mode
+  :config (setq racket-program "/usr/bin/racket"))
+#+end_src
+
+* Python
+** Elpy
+   Elpy pretty much allows you to set up a Python IDE in Emacs.
+
+   #+begin_src emacs-lisp
+   (use-package elpy
+     :config (add-hook 'python-mode-hook 'elpy-enable)
+     (setq elpy-rpc-python-command (file-truename "/usr/bin/python3")))
+   #+end_src

@@ -1,0 +1,26 @@
+#+TITLE: Advent of Code Day `(let ((day-number (string-match (rx (group (= 1 digit))) (file-name-nondirectory buffer-file-truename)))) (progn (shell-command (intern "touch ~/Documents/advent-of-code/raw/day" day-number ".py")) day-number))`
+#+PROPERTY header-args :tangle `(intern "../raw/day" (string-match (rx (group (= 1 digit))) (file-name-nondirectory buffer-file-truename)) .py)`
+* Setup
+  $0
+
+#+begin_src emacs-lisp
+
+#+end_src
+
+* Part 1
+** Problem Statement
+
+** Solution
+
+#+begin_src emacs-lisp
+
+#+end_src
+
+* Part 1
+** Problem Statement
+
+** Solution
+
+#+begin_src emacs-lisp
+
+#+end_src
